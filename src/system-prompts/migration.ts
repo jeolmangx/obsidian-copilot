@@ -45,6 +45,47 @@ function normalizeLineEndings(content: string): string {
 }
 
 /**
+ * Save failed migration to unsupported folder
+ * Reference: Similar to custom command's saveUnsupportedCommands pattern
+ * @param vault - Vault instance
+ * @param content - Original content to save
+ * @param reason - Reason for migration failure
+ * @returns Path to the created file
+ */
+async function saveFailedMigrationToUnsupported(
+  vault: Vault,
+  content: string,
+  reason: string
+): Promise<string> {
+  const folder = getSystemPromptsFolder();
+  const unsupportedFolder = `${folder}/unsupported`;
+  await ensureFolderExists(unsupportedFolder);
+
+  // Generate unique filename to avoid conflicts
+  const baseName = "Migrated System Prompt (Failed Verification)";
+  let fileName = baseName;
+  let counter = 1;
+
+  // Check if file exists and generate unique name if needed
+  while (vault.getAbstractFileByPath(`${unsupportedFolder}/${fileName}.md`)) {
+    counter++;
+    fileName = `${baseName} ${counter}`;
+  }
+
+  const filePath = `${unsupportedFolder}/${fileName}.md`;
+
+  // Prepend error message to content
+  const contentWithError = `> Migration failed: ${reason}
+>
+> To fix: Review the content below, then move this file to ${folder}
+
+${content}`;
+
+  await vault.create(filePath, contentWithError);
+  return filePath;
+}
+
+/**
  * Verify that migrated content matches the original legacy prompt
  * This is the "write-then-verify" safety check
  * @param file - The file to verify
@@ -80,8 +121,9 @@ async function verifyMigratedContent(file: TFile, originalContent: string): Prom
  * Safety guarantees:
  * 1. If target file exists, generates a unique name (never overwrites)
  * 2. After writing, reads back and verifies content matches
- * 3. Only clears userSystemPrompt AFTER verification passes
- * 4. If verification fails, userSystemPrompt is preserved
+ * 3. If verification fails, saves to unsupported/ folder for manual recovery
+ * 4. Only clears userSystemPrompt after successfully saving to file system (normal or unsupported)
+ * 5. If all save attempts fail, preserves userSystemPrompt for data safety
  */
 export async function migrateSystemPromptsFromSettings(vault: Vault): Promise<void> {
   const settings = getSettings();
@@ -124,44 +166,130 @@ export async function migrateSystemPromptsFromSettings(vault: Vault): Promise<vo
     // Step 2: Add frontmatter
     const file = vault.getAbstractFileByPath(filePath);
     if (!(file instanceof TFile)) {
-      logError("Migration failed: file not found after creation");
-      return; // Preserve userSystemPrompt - don't clear it
+      throw new Error("File not found after creation");
     }
 
     await ensurePromptFrontmatter(file, newPrompt);
 
     // Step 3: Write-then-verify - read back and confirm content matches
-    // Reason: Ensures data was actually persisted before clearing legacy field
+    // Reason: Ensures data was actually persisted before marking migration complete
     const verificationPassed = await verifyMigratedContent(file, legacyPrompt);
 
-    if (!verificationPassed) {
-      logError(
-        "Migration verification failed: content mismatch. " +
-          "Legacy userSystemPrompt preserved for safety. Please migrate manually."
+    if (verificationPassed) {
+      // ✅ Verification succeeded - set as default and show success
+      updateSetting("defaultSystemPromptTitle", promptName);
+
+      // Best-effort: Try to reload prompts, but don't fail migration if reload fails
+      try {
+        await loadAllSystemPrompts();
+      } catch (loadError) {
+        logWarn("Failed to reload prompts after migration:", loadError);
+      }
+
+      // Clear legacy field - data is safely in file system
+      updateSetting("userSystemPrompt", "");
+      logInfo("Cleared legacy userSystemPrompt field");
+
+      new ConfirmModal(
+        app,
+        () => {},
+        `We have upgraded your system prompt to the new file-based format. It is now stored as "${promptName}" in ${folder}.\n\nYou can now:\n• Edit your system prompt directly in the file\n• Create multiple system prompts\n• Manage prompts through the settings UI\n\nYour migrated prompt has been set as the default system prompt.`,
+        "🚀 System Prompt Upgraded",
+        "OK",
+        ""
+      ).open();
+    } else {
+      // ❌ Verification failed - save to unsupported folder and notify user
+      const unsupportedPath = await saveFailedMigrationToUnsupported(
+        vault,
+        legacyPrompt,
+        "content verification mismatch"
       );
-      // Do NOT clear userSystemPrompt - data may be lost
-      return;
+
+      // Best-effort: Try to reload prompts, but don't fail if reload fails
+      try {
+        await loadAllSystemPrompts();
+      } catch (loadError) {
+        logWarn("Failed to reload prompts after failed migration:", loadError);
+      }
+
+      // Clear legacy field - data is safely in unsupported folder
+      updateSetting("userSystemPrompt", "");
+      logInfo("Cleared legacy userSystemPrompt field (saved to unsupported)");
+
+      new ConfirmModal(
+        app,
+        () => {},
+        `⚠️ System Prompt Migration Issue
+
+Your system prompt was migrated but verification failed. Your data has been saved to:
+
+${unsupportedPath}
+
+To recover:
+1. Open the file and review the content
+2. Move it to ${folder}
+3. The prompt will be available immediately`,
+        "Migration Verification Failed",
+        "OK",
+        ""
+      ).open();
     }
-
-    // Step 4: Verification passed - safe to clear legacy field
-    logInfo(`Successfully migrated legacy userSystemPrompt to "${promptName}"`);
-    updateSetting("userSystemPrompt", "");
-    updateSetting("defaultSystemPromptTitle", promptName);
-
-    // Reload all prompts to update cache
-    await loadAllSystemPrompts();
-
-    // Show notification modal to inform user
-    new ConfirmModal(
-      app,
-      () => {},
-      `We have upgraded your system prompt to the new file-based format. It is now stored as "${promptName}" in ${folder}.\n\nYou can now:\n• Edit your system prompt directly in the file\n• Create multiple system prompts\n• Manage prompts through the settings UI\n\nYour migrated prompt has been set as the default system prompt.`,
-      "🚀 System Prompt Upgraded",
-      "OK",
-      ""
-    ).open();
   } catch (error) {
-    // On any error, preserve userSystemPrompt for safety
+    // On any error, try to save to unsupported folder before clearing (best-effort data preservation)
     logError("Failed to migrate legacy userSystemPrompt:", error);
+
+    // Best-effort: Try to save legacy prompt to unsupported folder
+    try {
+      const unsupportedPath = await saveFailedMigrationToUnsupported(
+        vault,
+        legacyPrompt,
+        error.message || String(error)
+      );
+
+      // Clear legacy field - data is safely in unsupported folder
+      updateSetting("userSystemPrompt", "");
+      logInfo("Cleared legacy userSystemPrompt field (saved to unsupported after error)");
+
+      new ConfirmModal(
+        app,
+        () => {},
+        `⚠️ System Prompt Migration Failed
+
+An error occurred during migration. Your data has been saved to:
+
+${unsupportedPath}
+
+To recover:
+1. Open the file and review the content
+2. Move it to ${getSystemPromptsFolder()}
+3. The prompt will be available immediately`,
+        "Migration Failed",
+        "OK",
+        ""
+      ).open();
+    } catch (saveError) {
+      // Even saving to unsupported failed - DO NOT clear userSystemPrompt (preserve data)
+      logError("Failed to save to unsupported folder:", saveError);
+      logWarn("Preserving userSystemPrompt in settings for manual recovery");
+
+      new ConfirmModal(
+        app,
+        () => {},
+        `Failed to migrate system prompt: ${error.message}
+
+Unable to save to file system. Your system prompt is still in settings and will continue to work.
+
+Please check:
+- Folder permissions for ${getSystemPromptsFolder()}
+- Available disk space
+- Vault is accessible
+
+You can retry by reloading the plugin.`,
+        "Migration Failed - Data Preserved",
+        "OK",
+        ""
+      ).open();
+    }
   }
 }

@@ -114,6 +114,15 @@ export class SystemPromptManager {
     const newPath = getPromptFilePath(newPrompt.title);
     const isRename = oldTitle !== newPrompt.title;
 
+    // Validate new name if renaming
+    if (isRename) {
+      const existingPrompts = getCachedSystemPrompts();
+      const validationError = validatePromptName(newPrompt.title, existingPrompts, oldTitle);
+      if (validationError) {
+        throw new Error(validationError);
+      }
+    }
+
     try {
       addPendingFileWrite(newPath);
       if (isRename) {
@@ -176,6 +185,13 @@ export class SystemPromptManager {
 
     try {
       addPendingFileWrite(filePath);
+
+      // Clear defaultSystemPromptTitle if it points to the deleted prompt
+      const settings = getSettings();
+      if (settings.defaultSystemPromptTitle === title) {
+        updateSetting("defaultSystemPromptTitle", "");
+        logInfo(`Cleared defaultSystemPromptTitle (deleted: ${title})`);
+      }
 
       const file = this.vault.getAbstractFileByPath(filePath);
       if (file instanceof TFile) {

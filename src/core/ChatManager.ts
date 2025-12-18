@@ -211,7 +211,7 @@ export class ChatManager {
    *
    * @param chainType - The chain type being used
    * @param vault - Vault used to resolve note/tag templates
-   * @param activeNote - Active note used for {activeNote}/{} resolution
+   * @param activeNote - Active note used for {activeNote} resolution
    * @returns Processed system prompt and included files (for deduplication)
    */
   private async getSystemPromptForMessage(

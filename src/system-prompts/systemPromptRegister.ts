@@ -1,4 +1,4 @@
-import { Plugin, TFile, Vault } from "obsidian";
+import { Plugin, TAbstractFile, Vault } from "obsidian";
 import {
   isSystemPromptFile,
   getSystemPromptsFolder,
@@ -45,6 +45,8 @@ export class SystemPromptRegister {
    * Clean up event listeners when plugin unloads
    */
   cleanup(): void {
+    // Cancel pending debounced operations
+    this.handleFileModify.cancel();
     this.vault.off("create", this.handleFileCreation);
     this.vault.off("delete", this.handleFileDeletion);
     this.vault.off("rename", this.handleFileRename);
@@ -66,7 +68,7 @@ export class SystemPromptRegister {
    * Debounce ensures frontmatter is fully written before reloading
    */
   private handleFileModify = debounce(
-    async (file: TFile) => {
+    async (file: TAbstractFile) => {
       if (!isSystemPromptFile(file) || isPendingFileWrite(file.path)) {
         return;
       }
@@ -88,7 +90,7 @@ export class SystemPromptRegister {
   /**
    * Handle file creation
    */
-  private handleFileCreation = async (file: TFile) => {
+  private handleFileCreation = async (file: TAbstractFile) => {
     if (!isSystemPromptFile(file) || isPendingFileWrite(file.path)) {
       return;
     }
@@ -107,7 +109,7 @@ export class SystemPromptRegister {
    * Handle file deletion
    * Also clears defaultSystemPromptTitle if it points to the deleted file
    */
-  private handleFileDeletion = async (file: TFile) => {
+  private handleFileDeletion = async (file: TAbstractFile) => {
     if (!isSystemPromptFile(file) || isPendingFileWrite(file.path)) {
       return;
     }
@@ -130,7 +132,7 @@ export class SystemPromptRegister {
    * Handle file rename
    * Reference: Similar to systemPromptManager.updatePrompt rename logic
    */
-  private handleFileRename = async (file: TFile, oldPath: string) => {
+  private handleFileRename = async (file: TAbstractFile, oldPath: string) => {
     // Check pending status for both old and new paths
     if (isPendingFileWrite(file.path) || isPendingFileWrite(oldPath)) {
       return;
@@ -138,24 +140,30 @@ export class SystemPromptRegister {
 
     const folder = getSystemPromptsFolder();
     const wasInFolder = oldPath.startsWith(folder + "/");
-    const isInFolder = isSystemPromptFile(file);
+    // Use type guard to check if file is a valid system prompt file
+    const promptFile = isSystemPromptFile(file) ? file : null;
+
+    // Early return if neither old nor new location is relevant
+    if (!wasInFolder && !promptFile) {
+      return;
+    }
 
     try {
       logInfo(`System prompt file renamed: ${oldPath} -> ${file.path}`);
 
       // Remove the old prompt from cache if it was in the folder
       if (wasInFolder) {
-        const oldFilename = oldPath.split("/").pop()?.replace(/\.md$/, "");
+        const oldFilename = oldPath.split("/").pop()?.replace(/\.md$/i, "");
         if (oldFilename) {
           deleteCachedSystemPrompt(oldFilename);
 
           // Handle defaultSystemPromptTitle update
           const settings = getSettings();
           if (settings.defaultSystemPromptTitle === oldFilename) {
-            if (isInFolder) {
+            if (promptFile) {
               // Rename within folder: update to new name
-              updateSetting("defaultSystemPromptTitle", file.basename);
-              logInfo(`Updated defaultSystemPromptTitle: ${oldFilename} -> ${file.basename}`);
+              updateSetting("defaultSystemPromptTitle", promptFile.basename);
+              logInfo(`Updated defaultSystemPromptTitle: ${oldFilename} -> ${promptFile.basename}`);
             } else {
               // Move out of folder: clear the setting
               updateSetting("defaultSystemPromptTitle", "");
@@ -166,9 +174,9 @@ export class SystemPromptRegister {
       }
 
       // Add the new prompt to cache if it's still in the folder
-      if (isInFolder) {
-        const prompt = await parseSystemPromptFile(file);
-        await ensurePromptFrontmatter(file, prompt);
+      if (promptFile) {
+        const prompt = await parseSystemPromptFile(promptFile);
+        await ensurePromptFrontmatter(promptFile, prompt);
         upsertCachedSystemPrompt(prompt);
       }
     } catch (error) {

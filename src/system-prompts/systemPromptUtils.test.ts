@@ -201,6 +201,39 @@ describe("isSystemPromptFile", () => {
 
     expect(isSystemPromptFile(mockFile)).toBe(false);
   });
+
+  it("returns false for files in unsupported subfolder", () => {
+    const mockFile = {
+      path: "SystemPrompts/unsupported/Failed Migration.md",
+      extension: "md",
+    } as TFile;
+
+    Object.setPrototypeOf(mockFile, TFile.prototype);
+
+    expect(isSystemPromptFile(mockFile)).toBe(false);
+  });
+
+  it("works with custom userSystemPromptsFolder setting", () => {
+    jest.spyOn(settingsModel, "getSettings").mockReturnValue({
+      userSystemPromptsFolder: "CustomFolder/MyPrompts",
+    } as any);
+
+    const validFile = {
+      path: "CustomFolder/MyPrompts/Test.md",
+      extension: "md",
+    } as TFile;
+
+    const unsupportedFile = {
+      path: "CustomFolder/MyPrompts/unsupported/Failed.md",
+      extension: "md",
+    } as TFile;
+
+    Object.setPrototypeOf(validFile, TFile.prototype);
+    Object.setPrototypeOf(unsupportedFile, TFile.prototype);
+
+    expect(isSystemPromptFile(validFile)).toBe(true);
+    expect(isSystemPromptFile(unsupportedFile)).toBe(false);
+  });
 });
 
 describe("parseSystemPromptFile", () => {

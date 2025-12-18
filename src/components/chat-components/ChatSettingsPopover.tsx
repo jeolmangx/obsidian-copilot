@@ -93,6 +93,14 @@ export function ChatSettingsPopover() {
     [settings.activeModels, modelKey]
   );
 
+  // Cleanup debounced save on unmount to ensure pending changes are persisted
+  useEffect(() => {
+    return () => {
+      debouncedSave.flush();
+      debouncedSave.cancel();
+    };
+  }, [debouncedSave]);
+
   /**
    * Sync global disableBuiltinSystemPrompt state to local UI state when popover opens
    * This ensures the UI reflects the current state after chat switches (new chat or load history)

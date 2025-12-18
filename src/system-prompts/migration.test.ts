@@ -332,7 +332,7 @@ describe("migrateSystemPromptsFromSettings", () => {
     );
   });
 
-  it("logs success message after migration", async () => {
+  it("logs clearing message after migration", async () => {
     const legacyPrompt = "This is a legacy system prompt.";
     const mockFile = {
       path: "SystemPrompts/Migrated Custom System Prompt.md",
@@ -349,12 +349,10 @@ describe("migrateSystemPromptsFromSettings", () => {
 
     await migrateSystemPromptsFromSettings(mockVault);
 
-    expect(logger.logInfo).toHaveBeenCalledWith(
-      'Successfully migrated legacy userSystemPrompt to "Migrated Custom System Prompt"'
-    );
+    expect(logger.logInfo).toHaveBeenCalledWith("Cleared legacy userSystemPrompt field");
   });
 
-  it("handles errors gracefully", async () => {
+  it("handles errors gracefully and preserves data when unsupported save fails", async () => {
     const legacyPrompt = "This is a legacy system prompt.";
     const error = new Error("Vault error");
 
@@ -362,6 +360,7 @@ describe("migrateSystemPromptsFromSettings", () => {
       userSystemPrompt: legacyPrompt,
     });
     (mockVault.getAbstractFileByPath as jest.Mock).mockReturnValue(null);
+    // Fail on initial folder creation and unsupported folder creation
     (utils.ensureFolderExists as jest.Mock).mockRejectedValue(error);
 
     await migrateSystemPromptsFromSettings(mockVault);
@@ -370,6 +369,8 @@ describe("migrateSystemPromptsFromSettings", () => {
       "Failed to migrate legacy userSystemPrompt:",
       error
     );
+    // Should NOT clear userSystemPrompt when all save attempts fail
+    expect(settingsModel.updateSetting).not.toHaveBeenCalledWith("userSystemPrompt", "");
   });
 
   it("does not throw error on migration failure", async () => {
@@ -421,8 +422,8 @@ describe("migrateSystemPromptsFromSettings", () => {
   });
 
   // Write-then-verify tests
-  describe("write-then-verify safety", () => {
-    it("preserves userSystemPrompt when verification fails due to content mismatch", async () => {
+  describe("write-then-verify safety with unsupported folder", () => {
+    it("clears userSystemPrompt and saves to unsupported when verification fails", async () => {
       const legacyPrompt = "This is a legacy system prompt.";
       const mockFile = {
         path: "SystemPrompts/Migrated Custom System Prompt.md",
@@ -435,7 +436,8 @@ describe("migrateSystemPromptsFromSettings", () => {
       });
       (mockVault.getAbstractFileByPath as jest.Mock)
         .mockReturnValueOnce(null) // File does not exist check
-        .mockReturnValueOnce(mockFile); // File retrieved after creation
+        .mockReturnValueOnce(mockFile) // File retrieved after creation
+        .mockReturnValueOnce(null); // unsupported file does not exist
 
       // Simulate content mismatch - file content differs from original
       (systemPromptUtils.parseSystemPromptFile as jest.Mock).mockResolvedValueOnce({
@@ -448,33 +450,37 @@ describe("migrateSystemPromptsFromSettings", () => {
 
       await migrateSystemPromptsFromSettings(mockVault);
 
-      // Should NOT clear userSystemPrompt when verification fails
-      expect(settingsModel.updateSetting).not.toHaveBeenCalledWith("userSystemPrompt", "");
-      expect(logger.logError).toHaveBeenCalledWith(
-        expect.stringContaining("Migration verification failed: content mismatch")
+      // Should save to unsupported folder
+      expect(mockVault.create).toHaveBeenCalledWith(
+        "SystemPrompts/unsupported/Migrated System Prompt (Failed Verification).md",
+        expect.stringContaining("Migration failed: content verification mismatch")
       );
+
+      // Should clear userSystemPrompt even when verification fails (follows command pattern)
+      expect(settingsModel.updateSetting).toHaveBeenCalledWith("userSystemPrompt", "");
     });
 
-    it("preserves userSystemPrompt when file not found after creation", async () => {
+    it("preserves userSystemPrompt when all save attempts fail", async () => {
       const legacyPrompt = "This is a legacy system prompt.";
+      const error = new Error("Disk full");
 
       (settingsModel.getSettings as jest.Mock).mockReturnValue({
         userSystemPrompt: legacyPrompt,
       });
-      (mockVault.getAbstractFileByPath as jest.Mock)
-        .mockReturnValueOnce(null) // File does not exist check
-        .mockReturnValueOnce(null); // File NOT found after creation (unexpected)
+      (mockVault.getAbstractFileByPath as jest.Mock).mockReturnValue(null);
+
+      // Mock both vault.create calls to fail (main migration + unsupported save)
+      (mockVault.create as jest.Mock)
+        .mockRejectedValueOnce(error) // First call fails (main migration)
+        .mockRejectedValueOnce(error); // Second call fails (unsupported save)
 
       await migrateSystemPromptsFromSettings(mockVault);
 
-      // Should NOT clear userSystemPrompt when file not found
+      // Should NOT clear userSystemPrompt when all save attempts fail
       expect(settingsModel.updateSetting).not.toHaveBeenCalledWith("userSystemPrompt", "");
-      expect(logger.logError).toHaveBeenCalledWith(
-        "Migration failed: file not found after creation"
-      );
     });
 
-    it("preserves userSystemPrompt when parseSystemPromptFile throws", async () => {
+    it("saves to unsupported and clears userSystemPrompt when parseSystemPromptFile throws", async () => {
       const legacyPrompt = "This is a legacy system prompt.";
       const mockFile = {
         path: "SystemPrompts/Migrated Custom System Prompt.md",
@@ -487,7 +493,8 @@ describe("migrateSystemPromptsFromSettings", () => {
       });
       (mockVault.getAbstractFileByPath as jest.Mock)
         .mockReturnValueOnce(null) // File does not exist check
-        .mockReturnValueOnce(mockFile); // File retrieved after creation
+        .mockReturnValueOnce(mockFile) // File retrieved after creation
+        .mockReturnValueOnce(null); // unsupported file does not exist
 
       // Simulate parseSystemPromptFile throwing an error
       (systemPromptUtils.parseSystemPromptFile as jest.Mock).mockRejectedValueOnce(
@@ -496,15 +503,44 @@ describe("migrateSystemPromptsFromSettings", () => {
 
       await migrateSystemPromptsFromSettings(mockVault);
 
-      // Should NOT clear userSystemPrompt when verification throws
-      expect(settingsModel.updateSetting).not.toHaveBeenCalledWith("userSystemPrompt", "");
-      expect(logger.logError).toHaveBeenCalledWith(
-        "Migration verification failed: unable to read back file",
-        expect.any(Error)
+      // Should save to unsupported folder
+      expect(mockVault.create).toHaveBeenCalledWith(
+        expect.stringContaining("unsupported/"),
+        expect.any(String)
       );
+
+      // Should clear userSystemPrompt when saved to unsupported successfully
+      expect(settingsModel.updateSetting).toHaveBeenCalledWith("userSystemPrompt", "");
     });
 
-    it("clears userSystemPrompt only after successful verification", async () => {
+    it("clears userSystemPrompt when main migration fails but unsupported save succeeds", async () => {
+      const legacyPrompt = "This is a legacy system prompt.";
+      const error = new Error("Vault error");
+
+      (settingsModel.getSettings as jest.Mock).mockReturnValue({
+        userSystemPrompt: legacyPrompt,
+      });
+      // Main migration will fail
+      (utils.ensureFolderExists as jest.Mock)
+        .mockRejectedValueOnce(error) // First call fails (main migration)
+        .mockResolvedValueOnce(undefined); // Second call succeeds (unsupported folder)
+      (mockVault.getAbstractFileByPath as jest.Mock)
+        .mockReturnValueOnce(null) // File does not exist check
+        .mockReturnValueOnce(null); // unsupported file does not exist
+
+      await migrateSystemPromptsFromSettings(mockVault);
+
+      // Should save to unsupported folder
+      expect(mockVault.create).toHaveBeenCalledWith(
+        expect.stringContaining("unsupported/"),
+        expect.stringContaining("Migration failed")
+      );
+
+      // Should clear userSystemPrompt after saving to unsupported
+      expect(settingsModel.updateSetting).toHaveBeenCalledWith("userSystemPrompt", "");
+    });
+
+    it("clears userSystemPrompt and sets default on successful verification", async () => {
       const legacyPrompt = "This is a legacy system prompt.";
       const mockFile = {
         path: "SystemPrompts/Migrated Custom System Prompt.md",
@@ -565,6 +601,37 @@ describe("migrateSystemPromptsFromSettings", () => {
       await migrateSystemPromptsFromSettings(mockVault);
 
       // Should succeed - whitespace differences are acceptable
+      expect(settingsModel.updateSetting).toHaveBeenCalledWith("userSystemPrompt", "");
+    });
+
+    it("normalizes CRLF/LF differences in verification", async () => {
+      // Legacy prompt uses CRLF line endings (Windows style)
+      const legacyPrompt = "Line 1\r\nLine 2\r\nLine 3";
+      const mockFile = {
+        path: "SystemPrompts/Migrated Custom System Prompt.md",
+      } as TFile;
+
+      Object.setPrototypeOf(mockFile, TFile.prototype);
+
+      (settingsModel.getSettings as jest.Mock).mockReturnValue({
+        userSystemPrompt: legacyPrompt,
+      });
+      (mockVault.getAbstractFileByPath as jest.Mock)
+        .mockReturnValueOnce(null) // File does not exist check
+        .mockReturnValueOnce(mockFile); // File retrieved after creation
+
+      // Saved content uses LF (Unix style) - file system normalized line endings
+      (systemPromptUtils.parseSystemPromptFile as jest.Mock).mockResolvedValueOnce({
+        title: "Migrated Custom System Prompt",
+        content: "Line 1\nLine 2\nLine 3",
+        createdMs: Date.now(),
+        modifiedMs: Date.now(),
+        lastUsedMs: 0,
+      });
+
+      await migrateSystemPromptsFromSettings(mockVault);
+
+      // Should succeed - CRLF/LF differences are normalized
       expect(settingsModel.updateSetting).toHaveBeenCalledWith("userSystemPrompt", "");
     });
   });

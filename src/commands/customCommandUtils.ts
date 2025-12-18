@@ -11,6 +11,7 @@ import {
 import { CustomCommand } from "@/commands/type";
 import { normalizePath, Notice, TAbstractFile, TFile, Vault, Editor } from "obsidian";
 import { getSettings } from "@/settings/model";
+import { logWarn } from "@/logger";
 import {
   updateCachedCommands,
   getCachedCustomCommands,
@@ -321,7 +322,7 @@ async function extractVariablesFromPrompt(
       if (variableName.startsWith('"')) {
         // DO NOTHING as the user probably wants to write a JSON object
       } else {
-        console.warn(`No notes found for variable: ${variableName}`);
+        logWarn(`No notes found for variable: ${variableName}`);
       }
     }
   }
