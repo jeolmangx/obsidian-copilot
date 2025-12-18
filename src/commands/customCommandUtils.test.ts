@@ -147,6 +147,19 @@ describe("processedPrompt()", () => {
     expect(result.includedFiles).toEqual([]);
   });
 
+  it("should treat {} as literal when skipEmptyBraces is true", async () => {
+    const customPrompt = "Rewrite the following text {}";
+    const selectedText = "here is some selected text 12345";
+
+    const result = await processPrompt(customPrompt, selectedText, mockVault, mockActiveNote, true);
+
+    // {} should be preserved as literal, not replaced
+    expect(result.processedPrompt).toBe("Rewrite the following text {}\n\n");
+    expect(result.includedFiles).toEqual([]);
+    expect(result.processedPrompt).not.toContain("<selected_text>");
+    expect(result.processedPrompt).not.toContain("{selected_text}");
+  });
+
   it("should process {activeNote} correctly", async () => {
     const doc: CustomCommand = {
       title: "test-prompt",

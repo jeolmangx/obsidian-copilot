@@ -11,6 +11,7 @@ import { validatePromptName } from "@/system-prompts/systemPromptUtils";
 import { SystemPromptManager } from "@/system-prompts/systemPromptManager";
 import { EMPTY_SYSTEM_PROMPT } from "@/system-prompts/constants";
 import { useSettingsValue } from "@/settings/model";
+import { SystemPromptSyntaxInstruction } from "@/components/SystemPromptSyntaxInstruction";
 
 {
   /* TODO(emt-lin): May be used in the future */
@@ -141,6 +142,7 @@ function SystemPromptAddModalContent({
       {/* Content Field */}
       <div className="tw-flex tw-flex-col tw-gap-2">
         <Label htmlFor="content">Content</Label>
+        <SystemPromptSyntaxInstruction />
         <div className="tw-relative">
           <Textarea
             id="content"
