@@ -139,20 +139,23 @@ export class SystemPromptRegister {
     }
 
     const folder = getSystemPromptsFolder();
-    const wasInFolder = oldPath.startsWith(folder + "/");
+    // Check if old path was a valid prompt file (direct child, not in subfolders like unsupported/)
+    const oldRelativePath = oldPath.startsWith(folder + "/") ? oldPath.slice(folder.length + 1) : "";
+    const wasValidPromptFile =
+      oldRelativePath !== "" && !oldRelativePath.includes("/") && oldPath.endsWith(".md");
     // Use type guard to check if file is a valid system prompt file
     const promptFile = isSystemPromptFile(file) ? file : null;
 
     // Early return if neither old nor new location is relevant
-    if (!wasInFolder && !promptFile) {
+    if (!wasValidPromptFile && !promptFile) {
       return;
     }
 
     try {
       logInfo(`System prompt file renamed: ${oldPath} -> ${file.path}`);
 
-      // Remove the old prompt from cache if it was in the folder
-      if (wasInFolder) {
+      // Remove the old prompt from cache if it was a valid prompt file
+      if (wasValidPromptFile) {
         const oldFilename = oldPath.split("/").pop()?.replace(/\.md$/i, "");
         if (oldFilename) {
           deleteCachedSystemPrompt(oldFilename);
