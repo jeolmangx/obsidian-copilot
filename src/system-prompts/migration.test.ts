@@ -157,7 +157,7 @@ describe("migrateSystemPromptsFromSettings", () => {
     );
   });
 
-  it("trims whitespace from legacy prompt content", async () => {
+  it("preserves whitespace from legacy prompt content", async () => {
     const legacyPrompt = "  This is a legacy system prompt.  \n\n";
     (settingsModel.getSettings as jest.Mock).mockReturnValue({
       userSystemPrompt: legacyPrompt,
@@ -171,9 +171,10 @@ describe("migrateSystemPromptsFromSettings", () => {
 
     await migrateSystemPromptsFromSettings(mockVault);
 
+    // Whitespace should be preserved (only line endings normalized)
     expect(mockVault.create).toHaveBeenCalledWith(
       "SystemPrompts/Migrated Custom System Prompt.md",
-      "This is a legacy system prompt."
+      "  This is a legacy system prompt.  \n\n"
     );
   });
 
@@ -574,7 +575,7 @@ describe("migrateSystemPromptsFromSettings", () => {
       );
     });
 
-    it("handles whitespace differences in verification", async () => {
+    it("preserves whitespace and verifies exact content match", async () => {
       const legacyPrompt = "  This is a legacy system prompt.  \n\n";
       const mockFile = {
         path: "SystemPrompts/Migrated Custom System Prompt.md",
@@ -589,10 +590,10 @@ describe("migrateSystemPromptsFromSettings", () => {
         .mockReturnValueOnce(null) // File does not exist check
         .mockReturnValueOnce(mockFile); // File retrieved after creation
 
-      // Content matches after trim
+      // Content preserved with whitespace (not trimmed)
       (systemPromptUtils.parseSystemPromptFile as jest.Mock).mockResolvedValueOnce({
         title: "Migrated Custom System Prompt",
-        content: "This is a legacy system prompt.", // Trimmed version
+        content: "  This is a legacy system prompt.  \n\n", // Whitespace preserved
         createdMs: Date.now(),
         modifiedMs: Date.now(),
         lastUsedMs: 0,
@@ -600,7 +601,7 @@ describe("migrateSystemPromptsFromSettings", () => {
 
       await migrateSystemPromptsFromSettings(mockVault);
 
-      // Should succeed - whitespace differences are acceptable
+      // Should succeed - whitespace is preserved exactly
       expect(settingsModel.updateSetting).toHaveBeenCalledWith("userSystemPrompt", "");
     });
 

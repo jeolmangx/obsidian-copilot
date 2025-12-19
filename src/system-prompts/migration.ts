@@ -95,9 +95,10 @@ ${content}`;
 async function verifyMigratedContent(file: TFile, originalContent: string): Promise<boolean> {
   try {
     const savedPrompt = await parseSystemPromptFile(file);
-    // Normalize line endings and trim to handle CRLF/LF differences
-    const savedNormalized = normalizeLineEndings(savedPrompt.content).trim();
-    const originalNormalized = normalizeLineEndings(originalContent).trim();
+    // Normalize line endings to handle CRLF/LF differences
+    // Note: Do NOT trim - preserve user's intentional whitespace
+    const savedNormalized = normalizeLineEndings(savedPrompt.content);
+    const originalNormalized = normalizeLineEndings(originalContent);
 
     if (savedNormalized !== originalNormalized) {
       logWarn(
@@ -152,16 +153,18 @@ export async function migrateSystemPromptsFromSettings(vault: Vault): Promise<vo
     }
 
     const now = Date.now();
+    // Normalize line endings but preserve whitespace (consistent with command migration)
+    const normalizedContent = normalizeLineEndings(legacyPrompt);
     const newPrompt: UserSystemPrompt = {
       title: promptName,
-      content: legacyPrompt.trim(),
+      content: normalizedContent,
       createdMs: now,
       modifiedMs: now,
       lastUsedMs: 0,
     };
 
     // Step 1: Create the file
-    await vault.create(filePath, legacyPrompt.trim());
+    await vault.create(filePath, normalizedContent);
 
     // Step 2: Add frontmatter
     const file = vault.getAbstractFileByPath(filePath);
