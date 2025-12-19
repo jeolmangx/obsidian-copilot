@@ -10,8 +10,9 @@ import {
   initializeSessionPromptFromDefault,
   upsertCachedSystemPrompt,
   deleteCachedSystemPrompt,
+  updateCachedSystemPrompts,
 } from "@/system-prompts/state";
-import { getSettings, updateSetting } from "@/settings/model";
+import { getSettings, subscribeToSettingsChange, updateSetting } from "@/settings/model";
 import { SystemPromptManager } from "@/system-prompts/systemPromptManager";
 import { logInfo, logError } from "@/logger";
 import debounce from "lodash.debounce";
@@ -24,6 +25,7 @@ export class SystemPromptRegister {
   private plugin: Plugin;
   private vault: Vault;
   private manager: SystemPromptManager;
+  private settingsUnsubscriber?: () => void;
 
   constructor(plugin: Plugin, vault: Vault) {
     this.plugin = plugin;
@@ -47,6 +49,8 @@ export class SystemPromptRegister {
   cleanup(): void {
     // Cancel pending debounced operations
     this.handleFileModify.cancel();
+    // Unsubscribe from settings changes
+    this.settingsUnsubscriber?.();
     this.vault.off("create", this.handleFileCreation);
     this.vault.off("delete", this.handleFileDeletion);
     this.vault.off("rename", this.handleFileRename);
@@ -61,6 +65,43 @@ export class SystemPromptRegister {
     this.vault.on("delete", this.handleFileDeletion);
     this.vault.on("rename", this.handleFileRename);
     this.vault.on("modify", this.handleFileModify);
+    this.settingsUnsubscriber = subscribeToSettingsChange(this.handleSettingsChange);
+  }
+
+  /**
+   * Handle settings changes that affect system prompt caching
+   */
+  private handleSettingsChange = (
+    prev: ReturnType<typeof getSettings>,
+    next: ReturnType<typeof getSettings>
+  ): void => {
+    if (prev.userSystemPromptsFolder !== next.userSystemPromptsFolder) {
+      void this.handleSystemPromptsFolderChange(
+        prev.userSystemPromptsFolder,
+        next.userSystemPromptsFolder
+      );
+    }
+  };
+
+  /**
+   * Clear cached prompts and reload prompts from the new folder
+   */
+  private async handleSystemPromptsFolderChange(
+    previousFolder: string,
+    nextFolder: string
+  ): Promise<void> {
+    try {
+      logInfo(`System prompts folder changed: ${previousFolder} -> ${nextFolder}`);
+      // Clear all cached prompts
+      updateCachedSystemPrompts([]);
+      // Reload prompts from the new folder
+      await this.manager.reloadPrompts();
+    } catch (error) {
+      logError(
+        `Error reloading system prompts after folder change: ${previousFolder} -> ${nextFolder}`,
+        error
+      );
+    }
   }
 
   /**
@@ -99,7 +140,9 @@ export class SystemPromptRegister {
       const prompt = await parseSystemPromptFile(file);
       // Ensure frontmatter is properly set
       await ensurePromptFrontmatter(file, prompt);
-      upsertCachedSystemPrompt(prompt);
+      // Re-parse to get updated timestamps after frontmatter is written
+      const updatedPrompt = await parseSystemPromptFile(file);
+      upsertCachedSystemPrompt(updatedPrompt);
     } catch (error) {
       logError(`Error processing system prompt creation: ${file.path}`, error);
     }
@@ -180,7 +223,9 @@ export class SystemPromptRegister {
       if (promptFile) {
         const prompt = await parseSystemPromptFile(promptFile);
         await ensurePromptFrontmatter(promptFile, prompt);
-        upsertCachedSystemPrompt(prompt);
+        // Re-parse to get updated timestamps after frontmatter is written
+        const updatedPrompt = await parseSystemPromptFile(promptFile);
+        upsertCachedSystemPrompt(updatedPrompt);
       }
     } catch (error) {
       logError(`Error processing system prompt rename: ${file.path}`, error);

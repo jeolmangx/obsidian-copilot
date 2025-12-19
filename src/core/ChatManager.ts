@@ -237,7 +237,6 @@ export class ChatManager {
         vault,
         activeNote
       );
-      allIncludedFiles.push(...userPromptResult.includedFiles);
 
       const processedSystemPromptWithoutMemory =
         this.injectProcessedUserCustomPromptIntoSystemPrompt({
@@ -246,11 +245,19 @@ export class ChatManager {
           processedUserCustomPrompt: userPromptResult.processedPrompt,
         });
 
-      processedBasePromptWithMemory = this.replaceSystemPromptWithoutMemoryInBasePrompt({
+      const nextProcessedBasePromptWithMemory = this.replaceSystemPromptWithoutMemoryInBasePrompt({
         basePromptWithMemory,
         systemPromptWithoutMemory,
         processedSystemPromptWithoutMemory,
       });
+
+      // Only add includedFiles if the processed prompt was actually injected
+      // This prevents context deduplication from skipping files that weren't actually included
+      if (nextProcessedBasePromptWithMemory !== basePromptWithMemory) {
+        allIncludedFiles.push(...userPromptResult.includedFiles);
+      }
+
+      processedBasePromptWithMemory = nextProcessedBasePromptWithMemory;
     }
 
     // Special case: Add project context for project chain
