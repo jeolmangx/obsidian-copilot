@@ -24,12 +24,16 @@ export function validatePromptName(
 ): string | null {
   const trimmedName = name.trim();
 
-  if (currentPromptName && trimmedName === currentPromptName) {
-    return null; // No change is allowed
-  }
-
   if (!trimmedName) {
     return "Prompt name cannot be empty";
+  }
+
+  if (name !== trimmedName) {
+    return "Prompt name cannot have leading or trailing spaces";
+  }
+
+  if (currentPromptName && name === currentPromptName) {
+    return null; // No change needed
   }
 
   // eslint-disable-next-line no-control-regex

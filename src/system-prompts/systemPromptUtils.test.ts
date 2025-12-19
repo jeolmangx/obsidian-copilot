@@ -100,8 +100,16 @@ describe("validatePromptName", () => {
     expect(validatePromptName("Prompt One", basePrompts, "Prompt One")).toBeNull();
   });
 
-  it("allows renaming with trimmed whitespace", () => {
-    expect(validatePromptName("  Prompt One  ", basePrompts, "Prompt One")).toBeNull();
+  it("returns error for names with leading or trailing whitespace", () => {
+    expect(validatePromptName("  Prompt One  ", basePrompts)).toBe(
+      "Prompt name cannot have leading or trailing spaces"
+    );
+    expect(validatePromptName(" Leading", basePrompts)).toBe(
+      "Prompt name cannot have leading or trailing spaces"
+    );
+    expect(validatePromptName("Trailing ", basePrompts)).toBe(
+      "Prompt name cannot have leading or trailing spaces"
+    );
   });
 });
 

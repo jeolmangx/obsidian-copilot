@@ -796,6 +796,17 @@ describe("validateCommandName", () => {
 
   it("returns null if unchanged currentCommandName", () => {
     expect(validateCommandName("Command One", baseCommands, "Command One")).toBeNull();
-    expect(validateCommandName("  Command One  ", baseCommands, "Command One")).toBeNull();
+  });
+
+  it("returns error for names with leading or trailing whitespace", () => {
+    expect(validateCommandName("  Command One  ", baseCommands)).toBe(
+      "Command name cannot have leading or trailing spaces"
+    );
+    expect(validateCommandName(" Leading", baseCommands)).toBe(
+      "Command name cannot have leading or trailing spaces"
+    );
+    expect(validateCommandName("Trailing ", baseCommands)).toBe(
+      "Command name cannot have leading or trailing spaces"
+    );
   });
 });

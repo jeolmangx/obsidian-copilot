@@ -41,12 +41,16 @@ export function validateCommandName(
 ): string | null {
   const trimmedName = name.trim();
 
-  if (currentCommandName && trimmedName === currentCommandName) {
-    return null; // No change is allowed
-  }
-
   if (!trimmedName) {
     return "Command name cannot be empty";
+  }
+
+  if (name !== trimmedName) {
+    return "Command name cannot have leading or trailing spaces";
+  }
+
+  if (currentCommandName && name === currentCommandName) {
+    return null; // No change needed
   }
 
   // eslint-disable-next-line no-control-regex
