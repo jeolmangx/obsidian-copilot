@@ -182,7 +182,7 @@ const deleteFileSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "If true, move to system trash (recoverable). If false, delete permanently. Default: true"
+      "If true, use system trash instead of Obsidian's .trash folder. If false, delete permanently. Default: false (uses .trash)"
     ),
 });
 
@@ -213,10 +213,11 @@ export const deleteFileTool: SimpleTool<
 
       const fileName = file.name;
 
-      if (useSystemTrash) {
-        await app.vault.trash(file, true);
+      if (!useSystemTrash) {
+        // Use Obsidian's .trash folder (false = Obsidian trash, true = system trash)
+        await app.vault.trash(file, false);
         logInfo(`[deleteFileTool] Trashed ${path}`);
-        new Notice(`Moved to trash: ${fileName}`);
+        new Notice(`Moved to .trash: ${fileName}`);
       } else {
         await app.vault.delete(file);
         logInfo(`[deleteFileTool] Permanently deleted ${path}`);
@@ -418,7 +419,7 @@ const deleteFolderSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "If true, move to system trash (recoverable). If false, delete permanently. Default: true"
+      "If true, use system trash instead of Obsidian's .trash folder. If false, delete permanently. Default: false (uses .trash)"
     ),
 });
 
@@ -451,10 +452,11 @@ export const deleteFolderTool: SimpleTool<
       const folderName = folder.name;
       const childCount = folder.children?.length || 0;
 
-      if (useSystemTrash) {
-        await app.vault.trash(folder, true);
+      if (!useSystemTrash) {
+        // Use Obsidian's .trash folder (false = Obsidian trash, true = system trash)
+        await app.vault.trash(folder, false);
         logInfo(`[deleteFolderTool] Trashed ${path} (${childCount} items)`);
-        new Notice(`Moved to trash: ${folderName} (${childCount} items)`);
+        new Notice(`Moved to .trash: ${folderName} (${childCount} items)`);
       } else {
         // For permanent deletion, we need to delete recursively
         await app.vault.delete(folder, true);
