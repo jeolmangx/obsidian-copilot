@@ -503,7 +503,18 @@ OUTPUT ONLY XML - NO OTHER TEXT.`;
     return customModel?.capabilities?.includes(capability) ?? false;
   }
 
-  protected isMultimodalModel(model: BaseChatModel): boolean {
+  protected isMultimodalModel(model: BaseChatModel, userMessage?: ChatMessage): boolean {
+    // If the message has images attached, always try multimodal
+    // This handles cases where the model supports vision but isn't flagged in config
+    if (userMessage?.content && Array.isArray(userMessage.content)) {
+      const hasImages = userMessage.content.some(
+        (item: any) => item.type === "image_url" && item.image_url?.url
+      );
+      if (hasImages) {
+        logInfo("[CopilotPlus] Images detected in message, enabling multimodal mode");
+        return true;
+      }
+    }
     return this.hasCapability(model, ModelCapability.VISION);
   }
 
@@ -534,7 +545,7 @@ OUTPUT ONLY XML - NO OTHER TEXT.`;
 
     // Get chat model
     const chatModel = this.chainManager.chatModelManager.getChatModel();
-    const isMultimodalCurrent = this.isMultimodalModel(chatModel);
+    const isMultimodalCurrent = this.isMultimodalModel(chatModel, userMessage);
 
     // Create messages array
     const messages: any[] = [];

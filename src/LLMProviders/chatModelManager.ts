@@ -27,7 +27,7 @@ import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatCohere } from "@langchain/cohere";
 import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { ChatDeepSeek } from "@langchain/deepseek";
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { GeminiChatModel } from "./extended/GeminiChatModel";
 import { ChatGroq } from "@langchain/groq";
 import { ChatMistralAI } from "@langchain/mistralai";
 import { ChatOllama } from "@langchain/ollama";
@@ -47,7 +47,7 @@ const CHAT_PROVIDER_CONSTRUCTORS = {
   [ChatModelProviders.AZURE_OPENAI]: ChatOpenAI,
   [ChatModelProviders.ANTHROPIC]: ChatAnthropic,
   [ChatModelProviders.COHEREAI]: ChatCohere,
-  [ChatModelProviders.GOOGLE]: ChatGoogleGenerativeAI,
+  [ChatModelProviders.GOOGLE]: GeminiChatModel,
   [ChatModelProviders.XAI]: ChatXAI,
   [ChatModelProviders.OPENROUTERAI]: ChatOpenRouter,
   [ChatModelProviders.OLLAMA]: ChatOllama,
@@ -244,6 +244,7 @@ export default class ChatModelManager {
           },
         ],
         baseUrl: customModel.baseUrl,
+        apiVersion: "v1beta",
       },
       [ChatModelProviders.XAI]: {
         apiKey: await getDecryptedKey(customModel.apiKey || settings.xaiApiKey),
