@@ -163,6 +163,8 @@ export enum ChatModels {
   OPENROUTER_GROK_4_FAST = "x-ai/grok-4-fast",
   SILICONFLOW_DEEPSEEK_V3 = "deepseek-ai/DeepSeek-V3",
   SILICONFLOW_DEEPSEEK_R1 = "deepseek-ai/DeepSeek-R1",
+  GEMINI_3_PRO_PREVIEW = "gemini-3-pro-preview",
+  GEMINI_3_FLASH_PREVIEW = "gemini-3-flash-preview",
 }
 
 // Model Providers
@@ -369,6 +371,22 @@ export const BUILTIN_CHAT_MODELS: CustomModel[] = [
     isBuiltIn: false,
     baseUrl: "https://api.siliconflow.com/v1",
     capabilities: [ModelCapability.REASONING],
+  },
+  {
+    name: ChatModels.GEMINI_3_PRO_PREVIEW,
+    provider: ChatModelProviders.GOOGLE,
+    enabled: true,
+    isBuiltIn: true,
+    projectEnabled: true,
+    capabilities: [ModelCapability.VISION, ModelCapability.REASONING],
+  },
+  {
+    name: ChatModels.GEMINI_3_FLASH_PREVIEW,
+    provider: ChatModelProviders.GOOGLE,
+    enabled: true,
+    isBuiltIn: true,
+    projectEnabled: true,
+    capabilities: [ModelCapability.VISION, ModelCapability.REASONING],
   },
 ];
 

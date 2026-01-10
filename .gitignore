@@ -31,4 +31,13 @@ data.json
 # Development session tracking
 TODO.md
 obsidian-copilot.code-workspace
-CHANGELOG.md
+
+# Editor
+.cursor
+
+# Debug logs and temporary files
+*.log
+error_output*.txt
+build_error.txt
+src/debug_gemini_vision.ts
+src/verify_fix_inline.ts
