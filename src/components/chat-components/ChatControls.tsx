@@ -33,6 +33,7 @@ import {
   ChatHistoryPopover,
 } from "@/components/chat-components/ChatHistoryPopover";
 import { TokenCounter } from "./TokenCounter";
+import { TokenUsage } from "@/types/message";
 
 export async function refreshVaultIndex() {
   try {
@@ -179,7 +180,7 @@ interface ChatControlsProps {
   onDeleteChat: (id: string) => Promise<void>;
   onLoadChat: (id: string) => Promise<void>;
   onOpenSourceFile?: (id: string) => Promise<void>;
-  latestTokenCount?: number | null;
+  latestTokenUsage?: TokenUsage | null;
 }
 
 export function ChatControls({
@@ -193,7 +194,7 @@ export function ChatControls({
   onDeleteChat,
   onLoadChat,
   onOpenSourceFile,
-  latestTokenCount,
+  latestTokenUsage,
 }: ChatControlsProps) {
   const settings = useSettingsValue();
   const [selectedChain, setSelectedChain] = useChainType();
@@ -290,7 +291,7 @@ export function ChatControls({
       </div>
       <div className="tw-flex tw-items-center tw-gap-1">
         <div className="tw-mr-2">
-          <TokenCounter tokenCount={latestTokenCount ?? null} />
+          <TokenCounter tokenUsage={latestTokenUsage ?? null} />
         </div>
         <Tooltip>
           <TooltipTrigger asChild>

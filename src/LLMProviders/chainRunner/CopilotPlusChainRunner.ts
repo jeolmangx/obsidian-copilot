@@ -685,6 +685,16 @@ OUTPUT ONLY XML - NO OTHER TEXT.`;
 
     logInfo("Final request to AI", { messages: messages.length });
 
+    // Debug: Log the full messages array being sent to LLM
+    console.log("📤 COPILOT+ REQUEST - Full messages payload:");
+    messages.forEach((msg, i) => {
+      const content = typeof msg.content === "string" 
+        ? msg.content.slice(0, 500) + (msg.content.length > 500 ? "..." : "")
+        : JSON.stringify(msg.content).slice(0, 500) + "...";
+      console.log(`  [${i}] ${msg.role}: ${content}`);
+    });
+    console.log(`📤 Total messages: ${messages.length}, Estimated chars: ${JSON.stringify(messages).length}`);
+
     // Record the payload for debugging (includes layered view if envelope available)
     const modelName = (chatModel as { modelName?: string } | undefined)?.modelName;
     recordPromptPayload({
