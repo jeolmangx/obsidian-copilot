@@ -23,6 +23,7 @@ import {
   deleteFolderTool,
   createFolderTool,
 } from "./FileManipulationTools";
+import { createAnalyzeImageTool } from "./ImageTools";
 
 /**
  * Define all built-in tools with their metadata
@@ -615,6 +616,7 @@ export function initializeBuiltinTools(vault?: Vault): void {
     if (vault) {
       registerFileTreeTool(vault);
       registerTagListTool();
+      registerAnalyzeImageTool(vault);
     }
 
     // Register memory tool if saved memory is enabled
@@ -622,4 +624,32 @@ export function initializeBuiltinTools(vault?: Vault): void {
       registerMemoryTool();
     }
   }
+}
+
+/**
+ * Register the analyze image tool
+ */
+export function registerAnalyzeImageTool(vault: Vault): void {
+  const registry = ToolRegistry.getInstance();
+
+  registry.register({
+    tool: createAnalyzeImageTool(vault),
+    metadata: {
+      id: "analyzeImage",
+      displayName: "Analyze Image",
+      description: "Analyze an image file from your vault",
+      category: "media",
+      requiresVault: true,
+      customPromptInstructions: `For analyzeImage:
+- Use this tool when the user asks you to "look at", "see", "analyze", or "describe" an image file path.
+- Input must be a valid vault path.
+- The tool will return the image content for you to inspect.
+
+Example usage:
+<use_tool>
+<name>analyzeImage</name>
+<path>Attachments/diagram.png</path>
+</use_tool>`,
+    },
+  });
 }

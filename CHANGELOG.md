@@ -18,9 +18,11 @@ Added 7 new tools for file and folder operations. All are user-toggleable in Set
 | **moveFolder** | Move a folder to a different parent location |
 | **deleteFolder** | Delete a folder and all its contents |
 | **createFolder** | Create a new folder (auto-creates parent folders) |
+| **analyzeImage** | **[NEW]** Analyze images from the vault by filepath |
 
 **Files added:**
 - `src/tools/FileManipulationTools.ts` - Tool implementations with Zod schemas
+- `src/tools/ImageTools.ts` - Image analysis tool implementation
 
 **Files modified:**
 - `src/tools/builtinTools.ts` - Added imports and tool registrations with metadata/prompt instructions
