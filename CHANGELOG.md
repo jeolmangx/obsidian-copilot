@@ -18,9 +18,11 @@ Added 7 new tools for file and folder operations. All are user-toggleable in Set
 | **moveFolder** | Move a folder to a different parent location |
 | **deleteFolder** | Delete a folder and all its contents |
 | **createFolder** | Create a new folder (auto-creates parent folders) |
+| **analyzeImage** | **[NEW]** Analyze images from the vault by filepath |
 
 **Files added:**
 - `src/tools/FileManipulationTools.ts` - Tool implementations with Zod schemas
+- `src/tools/ImageTools.ts` - Image analysis tool implementation
 
 **Files modified:**
 - `src/tools/builtinTools.ts` - Added imports and tool registrations with metadata/prompt instructions
@@ -55,3 +57,38 @@ Added 7 new tools for file and folder operations. All are user-toggleable in Set
     - Implemented `GeminiChatModel` subclass to override strict `@langchain/google-genai` model name validation.
     - Updated `chatModelManager.ts` to use `GeminiChatModel`.
 - **Gemini 3 Thinking Support**: Added `gemini-3-flash` and `gemini-3-pro` to `isThinkingEnabled` logic to support partial reasoning/thinking mode (suppressing temperature).
+
+---
+
+## What We're Doing (WIP - 2026-01-11)
+
+### Token Counter Widget
+Adding a token usage display widget to the chat UI. Shows estimated input/output tokens for each AI response.
+
+**Current Status:** Using estimation fallback (chars ÷ 4) since Gemini API doesn't reliably report token usage.
+
+**Files Modified:**
+
+| File | Purpose |
+|------|---------|
+| `src/components/chat-components/TokenCounter.tsx` | The widget component - shows `~<1k` style display, tooltip shows ↑ input / ↓ output breakdown. Always visible. |
+| `src/components/chat-components/ChatControls.tsx` | Parent component - passes `latestTokenUsage` prop to TokenCounter |
+| `src/components/Chat.tsx` | Main chat component - tracks `latestTokenUsage` state, estimates tokens on AI message, restores on chat switch |
+| `src/types/message.ts` | Contains `TokenUsage` interface (`inputTokens`, `outputTokens`, `totalTokens`) - already existed |
+
+**Debug Logging Added:**
+
+| File | Purpose |
+|------|---------|
+| `src/LLMProviders/chainRunner/LLMChainRunner.ts` | Logs `📤 LLM REQUEST` with full messages array being sent to AI |
+| `src/LLMProviders/chainRunner/CopilotPlusChainRunner.ts` | Logs `📤 COPILOT+ REQUEST` with full messages array for agent mode |
+
+**How it works:**
+1. When AI responds, `addMessage` callback estimates tokens: `inputTokens` from last user message, `outputTokens` from AI response
+2. Stores in `latestTokenUsage` state
+3. `useEffect` restores estimates when switching chats (looks at last AI message in history)
+4. Widget always visible - shows `~—` when no data yet
+
+**Known limitations:**
+- Input estimate is only user message text, not system prompts or context
+- This is intentional for consistency - API data was unreliable/zeros from Gemini

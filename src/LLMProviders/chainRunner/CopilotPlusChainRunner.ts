@@ -403,7 +403,8 @@ OUTPUT ONLY XML - NO OTHER TEXT.`;
 
   protected async buildMessageContent(
     textContent: string,
-    userMessage: ChatMessage
+    userMessage: ChatMessage,
+    additionalImagePaths: string[] = []
   ): Promise<MessageContent[]> {
     const failureMessages: string[] = [];
     const successfulImages: ImageContent[] = [];
@@ -461,9 +462,27 @@ OUTPUT ONLY XML - NO OTHER TEXT.`;
       }
     }
 
+    // Process images from analyzeImage tool outputs (passed explicitly, not via text scanning)
+    // This is more reliable than trying to extract markdown image links from text content
+    if (additionalImagePaths.length > 0) {
+      logInfo("[CopilotPlus] Processing images from analyzeImage tool:", additionalImagePaths);
+      imageSources.push({ urls: additionalImagePaths, type: "analyzeImage_tool" });
+    }
+
+    // DEBUG: Log all image sources before processing
+    logInfo("[CopilotPlus] All image sources to process:", {
+      totalSources: imageSources.length,
+      sources: imageSources.map((s) => ({ type: s.type, count: s.urls.length, urls: s.urls })),
+    });
+
     // Process all image sources
     for (const source of imageSources) {
       const result = await this.processImageUrls(source.urls);
+      logInfo(`[CopilotPlus] Processed ${source.type}:`, {
+        successCount: result.successfulImages.length,
+        failureCount: result.failureDescriptions.length,
+        failures: result.failureDescriptions,
+      });
       successfulImages.push(...result.successfulImages);
       failureMessages.push(...result.failureDescriptions);
     }
@@ -472,9 +491,16 @@ OUTPUT ONLY XML - NO OTHER TEXT.`;
     const existingContent = userMessage.content;
     if (existingContent && existingContent.length > 0) {
       const result = await this.processChatInputImages(existingContent);
+      logInfo("[CopilotPlus] Processed chat content images:", {
+        successCount: result.successfulImages.length,
+        failureCount: result.failureDescriptions.length,
+      });
       successfulImages.push(...result.successfulImages);
       failureMessages.push(...result.failureDescriptions);
     }
+
+    // DEBUG: Log final image count
+    logInfo("[CopilotPlus] Final image count for LLM:", successfulImages.length);
 
     // Let the LLM know about the image processing failures
     let finalText = textContent;
@@ -536,7 +562,8 @@ OUTPUT ONLY XML - NO OTHER TEXT.`;
     allToolOutputs: any[],
     abortController: AbortController,
     thinkStreamer: ThinkBlockStreamer,
-    originalUserQuestion: string
+    originalUserQuestion: string,
+    analyzeImagePaths: string[] = []
   ): Promise<void> {
     // Get chat history
     const memory = this.chainManager.memoryManager.getMemory();
@@ -638,8 +665,16 @@ OUTPUT ONLY XML - NO OTHER TEXT.`;
       }
 
       // Build message content with text and images for multimodal models
-      const content: string | MessageContent[] = isMultimodalCurrent
-        ? await this.buildMessageContent(finalUserContent, userMessage)
+      // IMPORTANT: Also process if we have analyzeImage paths, even if model isn't flagged as multimodal
+      const hasAnalyzeImagePaths = analyzeImagePaths.length > 0;
+      const shouldProcessImages = isMultimodalCurrent || hasAnalyzeImagePaths;
+      
+      if (hasAnalyzeImagePaths && !isMultimodalCurrent) {
+        logInfo("[CopilotPlus] Forcing multimodal mode due to analyzeImage tool outputs");
+      }
+      
+      const content: string | MessageContent[] = shouldProcessImages
+        ? await this.buildMessageContent(finalUserContent, userMessage, analyzeImagePaths)
         : finalUserContent;
 
       messages.push({
@@ -649,6 +684,16 @@ OUTPUT ONLY XML - NO OTHER TEXT.`;
     }
 
     logInfo("Final request to AI", { messages: messages.length });
+
+    // Debug: Log the full messages array being sent to LLM
+    console.log("📤 COPILOT+ REQUEST - Full messages payload:");
+    messages.forEach((msg, i) => {
+      const content = typeof msg.content === "string" 
+        ? msg.content.slice(0, 500) + (msg.content.length > 500 ? "..." : "")
+        : JSON.stringify(msg.content).slice(0, 500) + "...";
+      console.log(`  [${i}] ${msg.role}: ${content}`);
+    });
+    console.log(`📤 Total messages: ${messages.length}, Estimated chars: ${JSON.stringify(messages).length}`);
 
     // Record the payload for debugging (includes layered view if envelope available)
     const modelName = (chatModel as { modelName?: string } | undefined)?.modelName;
@@ -798,7 +843,20 @@ OUTPUT ONLY XML - NO OTHER TEXT.`;
 
       // All tools (including localSearch) are treated uniformly
       // They all go to the user message with consistent formatting
-      const allToolOutputs = toolOutputs.filter((output) => output.output != null);
+      // EXCEPT analyzeImage - its output is only used for image extraction, not text context
+      // This prevents double output where the model sees both the markdown text AND the image
+      const allToolOutputs = toolOutputs.filter(
+        (output) => output.output != null && output.tool !== "analyzeImage"
+      );
+
+      // Extract image paths from analyzeImage tool outputs for injection into the message
+      // The analyzeImage tool returns the vault path directly (e.g., "Attachments/image.png")
+      const analyzeImagePaths: string[] = toolOutputs
+        .filter((output) => output.tool === "analyzeImage" && output.output != null)
+        .map((output) => output.output as string);
+      if (analyzeImagePaths.length > 0) {
+        logInfo("[CopilotPlus] analyzeImage paths extracted for injection:", analyzeImagePaths);
+      }
 
       // Prepare textContent with composer instructions if needed
       // This is checked in streamMultimodalResponse to append to final user content
@@ -814,7 +872,8 @@ OUTPUT ONLY XML - NO OTHER TEXT.`;
         allToolOutputs,
         abortController,
         thinkStreamer,
-        cleanedUserMessage
+        cleanedUserMessage,
+        analyzeImagePaths
       );
     } catch (error: any) {
       // Reset loading message to default
