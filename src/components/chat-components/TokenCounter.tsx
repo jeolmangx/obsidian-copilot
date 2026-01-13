@@ -1,38 +1,46 @@
 import { Coins } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { TokenUsage } from "@/types/message";
 import React from "react";
 
 interface TokenCounterProps {
-  tokenCount: number | null;
+  tokenUsage: TokenUsage | null;
 }
 
 /**
- * Displays the context used from the latest AI response.
- * Shows "<1k" for counts under 1000, otherwise shows rounded thousands (e.g., "5k").
- * On hover, shows the exact token count.
- * Returns null if no token count is available.
+ * Displays token usage from the latest AI response.
+ * Shows estimated input tokens by default (formatted as ~5k, etc.).
+ * On hover, shows input (↑) and output (↓) token breakdown.
+ * Always visible - shows "—" when no data available.
  */
-export const TokenCounter: React.FC<TokenCounterProps> = ({ tokenCount }) => {
-  if (tokenCount === null || tokenCount === undefined) {
-    return null;
-  }
-
-  const formatTokenCount = (count: number): string => {
+export const TokenCounter: React.FC<TokenCounterProps> = ({ tokenUsage }) => {
+  const formatTokenCount = (count: number | undefined): string => {
+    if (count === undefined || count === null) {
+      return "—";
+    }
     if (count < 1000) {
       return "<1k";
     }
     return `${Math.floor(count / 1000)}k`;
   };
 
+  // Display input tokens if available, fall back to total
+  const displayValue = tokenUsage?.inputTokens ?? tokenUsage?.totalTokens;
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <div className="tw-flex tw-items-center tw-gap-1 tw-text-sm tw-text-faint">
           <Coins className="tw-size-3" />
-          <span>{formatTokenCount(tokenCount)}</span>
+          <span>~{formatTokenCount(displayValue)}</span>
         </div>
       </TooltipTrigger>
-      <TooltipContent>Context used: {tokenCount.toLocaleString()}</TooltipContent>
+      <TooltipContent>
+        <div className="tw-flex tw-flex-col tw-gap-0.5">
+          <span>↑ ~{tokenUsage?.inputTokens?.toLocaleString() ?? "—"}</span>
+          <span>↓ ~{tokenUsage?.outputTokens?.toLocaleString() ?? "—"}</span>
+        </div>
+      </TooltipContent>
     </Tooltip>
   );
 };

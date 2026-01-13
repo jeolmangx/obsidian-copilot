@@ -14,6 +14,16 @@ import {
 } from "./TimeTools";
 import { ToolDefinition, ToolRegistry } from "./ToolRegistry";
 import { youtubeTranscriptionTool } from "./YoutubeTools";
+import {
+  renameFileTool,
+  moveFileTool,
+  deleteFileTool,
+  renameFolderTool,
+  moveFolderTool,
+  deleteFolderTool,
+  createFolderTool,
+} from "./FileManipulationTools";
+import { createAnalyzeImageTool } from "./ImageTools";
 
 /**
  * Define all built-in tools with their metadata
@@ -299,6 +309,162 @@ Example usage:
     },
   },
 
+  // File manipulation tools (user-toggleable for safety)
+  {
+    tool: renameFileTool,
+    metadata: {
+      id: "renameFile",
+      displayName: "Rename File",
+      description: "Rename files in your vault",
+      category: "file",
+      requiresVault: true,
+      customPromptInstructions: `For renameFile:
+- Use to rename a file while keeping it in the same folder
+- Always call getFileTree first to confirm the exact current path
+- Only provide the new filename (with extension), not the full path
+
+Example usage:
+<use_tool>
+<name>renameFile</name>
+<currentPath>Projects/old-name.md</currentPath>
+<newName>new-name.md</newName>
+</use_tool>`,
+    },
+  },
+  {
+    tool: moveFileTool,
+    metadata: {
+      id: "moveFile",
+      displayName: "Move File",
+      description: "Move files to different folders",
+      category: "file",
+      requiresVault: true,
+      customPromptInstructions: `For moveFile:
+- Use to move a file to a different folder
+- Always call getFileTree first to confirm both source path and destination folder exist
+- Use empty string for destinationFolder to move to vault root
+
+Example usage:
+<use_tool>
+<name>moveFile</name>
+<currentPath>Inbox/note.md</currentPath>
+<destinationFolder>Archive/2024</destinationFolder>
+</use_tool>`,
+    },
+  },
+  {
+    tool: deleteFileTool,
+    metadata: {
+      id: "deleteFile",
+      displayName: "Delete File",
+      description: "Delete files (moves to trash by default)",
+      category: "file",
+      requiresVault: true,
+      customPromptInstructions: `For deleteFile:
+- Use to delete a file from the vault
+- By default, files are moved to system trash (recoverable)
+- Always confirm with the user before deleting unless they explicitly requested deletion
+- Call getFileTree first to confirm the exact path
+
+Example usage (move to trash):
+<use_tool>
+<name>deleteFile</name>
+<path>Archive/old-note.md</path>
+</use_tool>
+
+Example usage (permanent delete):
+<use_tool>
+<name>deleteFile</name>
+<path>Archive/old-note.md</path>
+<useSystemTrash>false</useSystemTrash>
+</use_tool>`,
+    },
+  },
+  {
+    tool: renameFolderTool,
+    metadata: {
+      id: "renameFolder",
+      displayName: "Rename Folder",
+      description: "Rename folders in your vault",
+      category: "file",
+      requiresVault: true,
+      customPromptInstructions: `For renameFolder:
+- Use to rename a folder while keeping it in the same location
+- All files inside will be automatically updated
+- Call getFileTree first to confirm the exact current path
+
+Example usage:
+<use_tool>
+<name>renameFolder</name>
+<currentPath>Projects/OldProjectName</currentPath>
+<newName>NewProjectName</newName>
+</use_tool>`,
+    },
+  },
+  {
+    tool: moveFolderTool,
+    metadata: {
+      id: "moveFolder",
+      displayName: "Move Folder",
+      description: "Move folders to different locations",
+      category: "file",
+      requiresVault: true,
+      customPromptInstructions: `For moveFolder:
+- Use to move a folder to a different parent folder
+- All contents will be moved with the folder
+- Cannot move a folder into itself or its children
+- Call getFileTree first to confirm paths
+
+Example usage:
+<use_tool>
+<name>moveFolder</name>
+<currentPath>Projects/ActiveProject</currentPath>
+<destinationFolder>Archive</destinationFolder>
+</use_tool>`,
+    },
+  },
+  {
+    tool: deleteFolderTool,
+    metadata: {
+      id: "deleteFolder",
+      displayName: "Delete Folder",
+      description: "Delete folders and their contents (moves to trash by default)",
+      category: "file",
+      requiresVault: true,
+      customPromptInstructions: `For deleteFolder:
+- Use to delete a folder and ALL its contents
+- By default, moves to system trash (recoverable)
+- ALWAYS confirm with the user before deleting folders
+- Mention how many items are in the folder before deleting
+
+Example usage:
+<use_tool>
+<name>deleteFolderTool</name>
+<path>Archive/OldProject</path>
+</use_tool>`,
+    },
+  },
+  {
+    tool: createFolderTool,
+    metadata: {
+      id: "createFolder",
+      displayName: "Create Folder",
+      description: "Create new folders in your vault",
+      category: "file",
+      requiresVault: true,
+      customPromptInstructions: `For createFolder:
+- Use to create a new folder
+- Parent folders are created automatically if they don't exist
+- Call getFileTree first to check the existing structure
+
+Example usage:
+<use_tool>
+<name>createFolder</name>
+<path>Projects/NewProject/Documentation</path>
+</use_tool>`,
+    },
+  },
+
   // Media tools
   {
     tool: youtubeTranscriptionTool,
@@ -450,6 +616,7 @@ export function initializeBuiltinTools(vault?: Vault): void {
     if (vault) {
       registerFileTreeTool(vault);
       registerTagListTool();
+      registerAnalyzeImageTool(vault);
     }
 
     // Register memory tool if saved memory is enabled
@@ -457,4 +624,32 @@ export function initializeBuiltinTools(vault?: Vault): void {
       registerMemoryTool();
     }
   }
+}
+
+/**
+ * Register the analyze image tool
+ */
+export function registerAnalyzeImageTool(vault: Vault): void {
+  const registry = ToolRegistry.getInstance();
+
+  registry.register({
+    tool: createAnalyzeImageTool(vault),
+    metadata: {
+      id: "analyzeImage",
+      displayName: "Analyze Image",
+      description: "Analyze an image file from your vault",
+      category: "media",
+      requiresVault: true,
+      customPromptInstructions: `For analyzeImage:
+- Use this tool when the user asks you to "look at", "see", "analyze", or "describe" an image file path.
+- Input must be a valid vault path.
+- The tool will return the image content for you to inspect.
+
+Example usage:
+<use_tool>
+<name>analyzeImage</name>
+<path>Attachments/diagram.png</path>
+</use_tool>`,
+    },
+  });
 }

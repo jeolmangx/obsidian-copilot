@@ -39,7 +39,7 @@ import { useIsPlusUser } from "@/plusUtils";
 import { updateSetting, useSettingsValue } from "@/settings/model";
 import { ChatUIState } from "@/state/ChatUIState";
 import { FileParserManager } from "@/tools/FileParserManager";
-import { ChatMessage } from "@/types/message";
+import { ChatMessage, TokenUsage } from "@/types/message";
 import { err2String, isPlusChain } from "@/utils";
 import { arrayBufferToBase64 } from "@/utils/base64";
 import { Notice, TFile } from "obsidian";
@@ -77,20 +77,68 @@ const ChatInternal: React.FC<ChatProps & { chatInput: ReturnType<typeof useChatI
   const [currentChain] = useChainType();
   const [currentAiMessage, setCurrentAiMessage] = useState("");
   const [inputMessage, setInputMessage] = useState("");
-  const [latestTokenCount, setLatestTokenCount] = useState<number | null>(null);
+  const [latestTokenUsage, setLatestTokenUsage] = useState<TokenUsage | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const lastUserMessageRef = useRef<string>(""); // Track last user message for token estimation
+
+  /**
+   * Estimate token count from text using chars/4 approximation.
+   * This is a rough estimate that works reasonably well for most text.
+   */
+  const estimateTokens = (text: string): number => {
+    return Math.ceil(text.length / 4);
+  };
 
   // Wrapper for addMessage that tracks token usage from AI responses
   const addMessage = useCallback(
     (message: ChatMessage) => {
       rawAddMessage(message);
-      // Track token usage from AI messages
-      if (message.sender === AI_SENDER && message.responseMetadata?.tokenUsage?.totalTokens) {
-        setLatestTokenCount(message.responseMetadata.tokenUsage.totalTokens);
+      
+      // Track user messages for input token estimation
+      if (message.sender === USER_SENDER) {
+        lastUserMessageRef.current = message.message;
+      }
+      
+      // Estimate token usage from AI messages (always use estimation for consistency)
+      if (message.sender === AI_SENDER) {
+        const estimatedInput = estimateTokens(lastUserMessageRef.current);
+        const estimatedOutput = estimateTokens(message.message);
+        setLatestTokenUsage({
+          inputTokens: estimatedInput,
+          outputTokens: estimatedOutput,
+          totalTokens: estimatedInput + estimatedOutput,
+        });
       }
     },
     [rawAddMessage]
   );
+
+  // Restore token usage from the last AI message when chat history loads/changes
+  useEffect(() => {
+    if (chatHistory.length > 0) {
+      // Find the last AI message and estimate from content
+      for (let i = chatHistory.length - 1; i >= 0; i--) {
+        const msg = chatHistory[i];
+        if (msg.sender === AI_SENDER) {
+          // Find the preceding user message to estimate input tokens
+          const userMsg = i > 0 && chatHistory[i - 1].sender === USER_SENDER 
+            ? chatHistory[i - 1].message 
+            : "";
+          const estimatedInput = estimateTokens(userMsg);
+          const estimatedOutput = estimateTokens(msg.message);
+          setLatestTokenUsage({
+            inputTokens: estimatedInput,
+            outputTokens: estimatedOutput,
+            totalTokens: estimatedInput + estimatedOutput,
+          });
+          break;
+        }
+      }
+    } else {
+      // No chat history, reset token usage
+      setLatestTokenUsage(null);
+    }
+  }, [chatHistory.length]); // Re-run when chat history changes
 
   // Function to set the abort controller ref (for getAIResponse compatibility)
   const setAbortController = useCallback((controller: AbortController | null) => {
@@ -150,10 +198,10 @@ const ChatInternal: React.FC<ChatProps & { chatInput: ReturnType<typeof useChatI
     setProgressCardVisible(null);
   }, [projectContextStatus]);
 
-  // Clear token count when chat is cleared or replaced (e.g., loading chat history)
+  // Clear token usage when chat is cleared or replaced (e.g., loading chat history)
   useEffect(() => {
     if (chatHistory.length === 0) {
-      setLatestTokenCount(null);
+      setLatestTokenUsage(null);
     }
   }, [chatHistory]);
 
@@ -602,7 +650,7 @@ const ChatInternal: React.FC<ChatProps & { chatInput: ReturnType<typeof useChatI
     // Additional UI state reset specific to this component
     safeSet.setCurrentAiMessage("");
     setContextNotes([]);
-    setLatestTokenCount(null); // Clear token count on new chat
+    setLatestTokenUsage(null); // Clear token usage on new chat
     clearSelectedTextContexts();
     // Respect the includeActiveNote setting for all non-project chains
     if (selectedChain === ChainType.PROJECT_CHAIN) {
@@ -771,7 +819,7 @@ const ChatInternal: React.FC<ChatProps & { chatInput: ReturnType<typeof useChatI
               onDeleteChat={handleDeleteChat}
               onLoadChat={handleLoadChat}
               onOpenSourceFile={handleOpenSourceFile}
-              latestTokenCount={latestTokenCount}
+              latestTokenUsage={latestTokenUsage}
             />
             <ChatInput
               inputMessage={inputMessage}

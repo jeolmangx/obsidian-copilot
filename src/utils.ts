@@ -1009,7 +1009,11 @@ export function getModelInfo(model: BaseChatModel | string): ModelInfo {
   const isOSeries = isOSeriesModel(modelName);
   const isGPT5 = isGPT5Model(modelName);
   const isThinkingEnabled =
-    modelName.startsWith("claude-3-7-sonnet") || modelName.startsWith("claude-sonnet-4");
+    modelName.startsWith("claude-3-7-sonnet") ||
+    modelName.startsWith("claude-sonnet-4") ||
+    modelName.includes("gemini-2.0-flash-thinking") ||
+    modelName.includes("gemini-3-flash") ||
+    modelName.includes("gemini-3-pro");
 
   return {
     isOSeries,
