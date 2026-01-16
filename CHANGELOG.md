@@ -92,3 +92,19 @@ Adding a token usage display widget to the chat UI. Shows estimated input/output
 **Known limitations:**
 - Input estimate is only user message text, not system prompts or context
 - This is intentional for consistency - API data was unreliable/zeros from Gemini
+
+---
+
+### Function Call Loop Fix (2026-01-11)
+**Problem:** Gemini agent was calling tools repeatedly until hitting the 4-iteration limit instead of answering.
+
+**Root Cause:** `GeminiModelAdapter` prompts emphasized tool execution but lacked clear termination signals.
+
+**Fix:** Added strong termination instructions to `modelAdapter.ts`:
+- **ONE AND DONE**: Each tool called at most once per request
+- **ANSWER AFTER RESULTS**: Respond after receiving tool results
+- **DON'T FISH FOR MORE**: Use first search results, don't call more tools
+- **SIMPLE QUESTIONS = NO TOOLS**: Not every message needs tools
+
+**File Modified:** `src/LLMProviders/chainRunner/utils/modelAdapter.ts` (GeminiModelAdapter class)
+
