@@ -6,6 +6,8 @@ import { logError, logInfo } from "@/logger";
 import { extractRetryTime, isRateLimitError } from "@/utils/rateLimitUtils";
 import { Notice, TFile, Vault } from "obsidian";
 import { CanvasLoader } from "./CanvasLoader";
+import pdfParse from "pdf-parse";
+import mammoth from "mammoth";
 
 interface FileParser {
   supportedExtensions: string[];
@@ -22,11 +24,9 @@ export class MarkdownParser implements FileParser {
 
 export class PDFParser implements FileParser {
   supportedExtensions = ["pdf"];
-  private brevilabsClient: BrevilabsClient;
   private pdfCache: PDFCache;
 
-  constructor(brevilabsClient: BrevilabsClient) {
-    this.brevilabsClient = brevilabsClient;
+  constructor(brevilabsClient?: BrevilabsClient) {
     this.pdfCache = PDFCache.getInstance();
   }
 
@@ -41,12 +41,16 @@ export class PDFParser implements FileParser {
         return cachedResponse.response;
       }
 
-      // If not in cache, read the file and call the API
+      // If not in cache, read the file and parse locally
       const binaryContent = await vault.readBinary(file);
-      logInfo("Calling pdf4llm API for:", file.path);
-      const pdf4llmResponse = await this.brevilabsClient.pdf4llm(binaryContent);
-      await this.pdfCache.set(file, pdf4llmResponse);
-      return pdf4llmResponse.response;
+      const buffer = Buffer.from(binaryContent);
+
+      const data = await pdfParse(buffer);
+      const text = data.text;
+
+      const response = { response: text };
+      await this.pdfCache.set(file, response);
+      return text;
     } catch (error) {
       logError(`Error extracting content from PDF ${file.path}:`, error);
       return `[Error: Could not extract content from PDF ${file.basename}]`;
@@ -56,6 +60,24 @@ export class PDFParser implements FileParser {
   async clearCache(): Promise<void> {
     logInfo("Clearing PDF cache");
     await this.pdfCache.clear();
+  }
+}
+
+export class DocxParser implements FileParser {
+  supportedExtensions = ["docx"];
+
+  async parseFile(file: TFile, vault: Vault): Promise<string> {
+    try {
+      logInfo("Parsing DOCX file:", file.path);
+      const binaryContent = await vault.readBinary(file);
+      const buffer = Buffer.from(binaryContent);
+
+      const result = await mammoth.extractRawText({ buffer: buffer });
+      return result.value;
+    } catch (error) {
+      logError(`Error parsing DOCX file ${file.path}:`, error);
+      return `[Error: Could not parse DOCX file ${file.basename}]`;
+    }
   }
 }
 
@@ -342,16 +364,22 @@ export class FileParserManager {
 
     // Register parsers
     this.registerParser(new MarkdownParser());
-
-    // In project mode, use Docs4LLMParser for all supported files including PDFs
-    this.registerParser(new Docs4LLMParser(brevilabsClient, project));
-
-    // Only register PDFParser when not in project mode
-    if (!isProjectMode) {
-      this.registerParser(new PDFParser(brevilabsClient));
-    }
-
+    this.registerParser(new PDFParser(brevilabsClient));
+    this.registerParser(new DocxParser());
     this.registerParser(new CanvasParser());
+
+    // Use legacy Docs4LLMParser as fallback for other file types in project mode if needed,
+    // but prefer local parsers where available.
+    if (isProjectMode) {
+        // Register Docs4LLMParser for remaining types, but ensure local parsers take precedence
+        const docsParser = new Docs4LLMParser(brevilabsClient, project);
+        // We only register extensions that are NOT already handled
+        for (const ext of docsParser.supportedExtensions) {
+            if (!this.parsers.has(ext)) {
+                this.parsers.set(ext, docsParser);
+            }
+        }
+    }
   }
 
   registerParser(parser: FileParser) {

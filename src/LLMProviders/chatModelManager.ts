@@ -615,9 +615,6 @@ export default class ChatModelManager {
     }
 
     // Check Copilot Plus entitlement requirements
-    if (model.plusExclusive && !settings.isPlusUser) {
-      return false;
-    }
 
     return true;
   }
