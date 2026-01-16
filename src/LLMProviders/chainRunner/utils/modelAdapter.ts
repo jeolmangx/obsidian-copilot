@@ -843,6 +843,38 @@ Your response:
 
 Remember: The user has already told you what to do. Execute it NOW with the available tools.`);
 
+    // Add CRITICAL termination instructions for Gemini
+    geminiSectionParts.push(`🛑 CRITICAL: WHEN TO STOP CALLING TOOLS 🛑
+
+You are limited to 4 iterations. DO NOT waste them by:
+- Calling the same tool multiple times with similar queries
+- Calling tools you don't need
+- "Double-checking" with additional tool calls
+
+⚡ TERMINATION RULES - FOLLOW STRICTLY:
+
+1. **ONE AND DONE**: Each tool should be called AT MOST ONCE per request
+   - ❌ WRONG: localSearch("piano") → localSearch("piano practice") → localSearch("piano notes")
+   - ✅ CORRECT: localSearch("piano practice") → ANSWER
+
+2. **ANSWER AFTER RESULTS**: Once you receive tool results, ANSWER THE USER
+   - ❌ WRONG: Get search results → Call more tools → Call more tools → Hit limit
+   - ✅ CORRECT: Get search results → Provide your answer based on results
+
+3. **DON'T FISH FOR MORE**: If first search gives useful results, USE THEM
+   - Don't call more tools hoping for "better" results
+   - Work with what you have
+
+4. **SIMPLE QUESTIONS = NO TOOLS**: Not every message needs tools
+   - "What is 2+2?" → Just answer, no tools needed
+   - "Summarize this" (with context already provided) → Just answer
+
+🎯 IDEAL FLOW:
+User asks question → 1-2 tool calls max → Receive results → PROVIDE FINAL ANSWER
+
+After receiving tool results, your NEXT response should be your answer to the user, NOT more tool calls (unless critically necessary).`);
+
+
     sections.push({
       id: "gemini-specific-guidelines",
       label: "Gemini-specific guidance",

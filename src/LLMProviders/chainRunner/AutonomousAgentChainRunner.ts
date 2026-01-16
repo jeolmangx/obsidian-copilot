@@ -1,5 +1,5 @@
 import { ModelCapability } from "@/constants";
-import { MessageContent } from "@/imageProcessing/imageProcessor";
+import { ImageBatchProcessor, MessageContent } from "@/imageProcessing/imageProcessor";
 import { logError, logInfo, logWarn } from "@/logger";
 import { UserMemoryManager } from "@/memory/UserMemoryManager";
 import { checkIsPlusUser } from "@/plusUtils";
@@ -534,7 +534,30 @@ ${params}
         break;
       }
 
-      const toolCalls = parseXMLToolCalls(responseContent);
+      let toolCalls = parseXMLToolCalls(responseContent);
+      if (toolCalls.length > 1) {
+        const dedupedToolCalls = [];
+        const seenToolCalls = new Set<string>();
+        for (const toolCall of toolCalls) {
+          let argsKey = "";
+          try {
+            argsKey = JSON.stringify(toolCall.args ?? {});
+          } catch {
+            argsKey = String(toolCall.args ?? "");
+          }
+          const callKey = `${toolCall.name}:${argsKey}`;
+          if (seenToolCalls.has(callKey)) {
+            logWarn("Skipping duplicate tool call in same iteration", {
+              tool: toolCall.name,
+              args: toolCall.args,
+            });
+            continue;
+          }
+          seenToolCalls.add(callKey);
+          dedupedToolCalls.push(toolCall);
+        }
+        toolCalls = dedupedToolCalls;
+      }
       const prematureResponseResult = adapter.detectPrematureResponse?.(responseContent);
       if (prematureResponseResult?.hasPremature && iteration === 1) {
         if (prematureResponseResult.type === "before") {
@@ -547,14 +570,14 @@ ${params}
       }
 
       if (toolCalls.length === 0) {
-        const cleanedResponse = stripToolCallXML(responseContent);
+        const cleanedResponse = this.stripToolResultEcho(stripToolCallXML(responseContent));
         const allParts = [...iterationHistory];
         if (cleanedResponse.trim()) {
           allParts.push(cleanedResponse);
         }
         fullAIResponse = allParts.join("\n\n");
 
-        const safeAssistantMessage = ensureEncodedToolCallMarkerResults(responseContent);
+        const safeAssistantMessage = this.stripToolResultEcho(stripToolCallXML(responseContent));
         conversationMessages.push({
           role: "assistant",
           content: safeAssistantMessage,
@@ -569,8 +592,9 @@ ${params}
         sanitizedResponse = adapter.sanitizeResponse(responseContent, iteration);
       }
 
-      const responseForHistory = stripToolCallXML(sanitizedResponse);
-      if (responseForHistory.trim()) {
+      const responseForHistory = this.stripToolResultEcho(stripToolCallXML(sanitizedResponse));
+      const shouldPersistAssistant = toolCalls.length === 0;
+      if (shouldPersistAssistant && responseForHistory.trim()) {
         iterationHistory.push(responseForHistory);
       }
 
@@ -693,23 +717,63 @@ ${params}
       const assistantMemoryContent = sanitizedResponse;
       llmMessages.push(assistantMemoryContent);
 
-      if (toolResults.length > 0) {
-        const toolResultsForLLM = processToolResults(toolResults, true);
+      const analyzeImagePaths = toolResults
+        .filter((result) => result.toolName === "analyzeImage" && result.success)
+        .map((result) => result.result)
+        .filter((path): path is string => typeof path === "string" && path.trim().length > 0);
+      const filteredToolResults = toolResults.filter((result) => result.toolName !== "analyzeImage");
+
+      if (filteredToolResults.length > 0) {
+        const toolResultsForLLM = processToolResults(filteredToolResults, true);
         if (toolResultsForLLM) {
           llmMessages.push(toolResultsForLLM);
         }
       }
 
-      const safeAssistantContent = ensureEncodedToolCallMarkerResults(sanitizedResponse);
-      conversationMessages.push({
-        role: "assistant",
-        content: safeAssistantContent,
-      });
+      const safeAssistantContent = this.stripToolResultEcho(stripToolCallXML(sanitizedResponse));
+      if (shouldPersistAssistant && safeAssistantContent.trim()) {
+        conversationMessages.push({
+          role: "assistant",
+          content: safeAssistantContent,
+        });
+      }
 
-      const toolResultsForConversation = processToolResults(toolResults, false);
+      let toolResultsForConversation = processToolResults(filteredToolResults, false);
+      if (analyzeImagePaths.length > 0) {
+        const analyzeImageSummary = analyzeImagePaths
+          .map((path) => `Tool 'analyzeImage' result: ${path}`)
+          .join("\n");
+        toolResultsForConversation = toolResultsForConversation
+          ? `${toolResultsForConversation}\n\n${analyzeImageSummary}`
+          : analyzeImageSummary;
+      }
+      let toolResultsContent: string | MessageContent[] = toolResultsForConversation;
+
+      if (analyzeImagePaths.length > 0) {
+        const failedImages: string[] = [];
+        const processedImages = await ImageBatchProcessor.processUrlBatch(
+          analyzeImagePaths,
+          failedImages,
+          this.chainManager.app.vault
+        );
+        ImageBatchProcessor.showFailedImagesNotice(failedImages);
+
+        let toolResultsText = toolResultsForConversation;
+        if (processedImages.failureDescriptions.length > 0) {
+          toolResultsText = `${toolResultsForConversation}\n\nNote:\n${processedImages.failureDescriptions.join("\n")}\n`;
+        }
+        toolResultsContent = [
+          {
+            type: "text",
+            text: toolResultsText,
+          },
+          ...processedImages.successfulImages,
+        ];
+      }
+
       conversationMessages.push({
         role: "user",
-        content: toolResultsForConversation,
+        content: toolResultsContent,
       });
 
       logInfo("Tool results added to conversation");
@@ -754,14 +818,14 @@ ${params}
     updateCurrentAiMessage: (message: string) => void,
     loopDeps: AgentLoopDeps
   ): void {
-    const cleanedMessage = stripToolCallXML(fullMessage);
+    const cleanedMessage = this.stripToolResultEcho(stripToolCallXML(fullMessage));
     const displayParts: string[] = [...iterationHistory];
 
+    const toolCalls = parseXMLToolCalls(fullMessage);
+    const partialToolName = extractToolNameFromPartialBlock(fullMessage);
     if (cleanedMessage.trim()) {
       displayParts.push(cleanedMessage);
     }
-
-    const toolCalls = parseXMLToolCalls(fullMessage);
     const backgroundToolNames = new Set(
       loopDeps.availableTools.filter((tool) => tool.isBackground).map((tool) => tool.name)
     );
@@ -786,7 +850,6 @@ ${params}
       }
     });
 
-    const partialToolName = extractToolNameFromPartialBlock(fullMessage);
     if (partialToolName) {
       const lastToolNameIndex = fullMessage.lastIndexOf(partialToolName);
       if (fullMessage.length - lastToolNameIndex > STREAMING_TRUNCATE_THRESHOLD) {
@@ -891,6 +954,17 @@ ${params}
 
     return finalResponse;
   }
+
+  /**
+   * Strip tool-result echo prefixes from assistant content to keep chat output clean.
+   */
+  private stripToolResultEcho(content: string): string {
+    if (!content) {
+      return content;
+    }
+    return content.replace(/(^|\n)Tool '[^']+' result:\s*/g, "$1");
+  }
+
 
   private async streamResponse(
     messages: ConversationMessage[],

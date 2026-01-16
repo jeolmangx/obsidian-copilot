@@ -41,3 +41,7 @@ error_output*.txt
 build_error.txt
 src/debug_gemini_vision.ts
 src/verify_fix_inline.ts
+butt.md
+butt2.md
+CHANGELOG.md
+
