@@ -751,26 +751,6 @@ OUTPUT ONLY XML - NO OTHER TEXT.`;
     );
     let sources: { title: string; path: string; score: number; explanation?: any }[] = [];
 
-    const isPlusUser = await checkIsPlusUser({
-      isCopilotPlus: true,
-    });
-    if (!isPlusUser) {
-      await this.handleError(
-        new Error("Invalid license key"),
-        thinkStreamer.processErrorChunk.bind(thinkStreamer)
-      );
-      const errorResponse = thinkStreamer.close().content;
-
-      return this.handleResponse(
-        errorResponse,
-        userMessage,
-        abortController,
-        addMessage,
-        updateCurrentAiMessage,
-        undefined // no sources
-      );
-    }
-
     try {
       logInfo("==== Step 1: Planning tools ====");
       let toolCalls: ToolCallWithExecutor[];

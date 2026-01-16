@@ -49,16 +49,6 @@ export async function executeSequentialToolCall(
     }
 
     // Check if tool requires Plus subscription
-    if (tool.isPlusOnly) {
-      const isPlusUser = await checkIsPlusUser();
-      if (!isPlusUser) {
-        return {
-          toolName: toolCall.name,
-          result: `Error: ${getToolDisplayName(toolCall.name)} requires a Copilot Plus subscription`,
-          success: false,
-        };
-      }
-    }
 
     // Prepare tool arguments
     const toolArgs = { ...toolCall.args };
