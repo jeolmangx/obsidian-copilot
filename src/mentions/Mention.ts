@@ -2,6 +2,10 @@ import { ImageProcessor } from "@/imageProcessing/imageProcessor";
 import { BrevilabsClient, Url4llmResponse } from "@/LLMProviders/brevilabsClient";
 import { err2String, isYoutubeUrl } from "@/utils";
 import { logError } from "@/logger";
+import { YoutubeTranscript } from "youtube-transcript";
+import * as cheerio from "cheerio";
+import TurndownService from "turndown";
+import { requestUrl } from "obsidian";
 
 export interface MentionData {
   type: string;
@@ -14,10 +18,12 @@ export class Mention {
   private static instance: Mention;
   private mentions: Map<string, MentionData>;
   private brevilabsClient: BrevilabsClient;
+  private turndownService: TurndownService;
 
   private constructor() {
     this.mentions = new Map();
     this.brevilabsClient = BrevilabsClient.getInstance();
+    this.turndownService = new TurndownService();
   }
 
   static getInstance(): Mention {
@@ -44,7 +50,29 @@ export class Mention {
 
   async processUrl(url: string): Promise<Url4llmResponse & { error?: string }> {
     try {
-      return await this.brevilabsClient.url4llm(url);
+        const startTime = Date.now();
+        const response = await requestUrl({ url: url });
+        const html = response.text;
+
+        const $ = cheerio.load(html);
+
+        // Remove script and style elements
+        $('script').remove();
+        $('style').remove();
+        $('nav').remove();
+        $('footer').remove();
+        $('header').remove();
+
+        // Extract main content - a simple heuristic
+        // Prefer article, main, or body tags
+        let contentHtml = $('article').html() || $('main').html() || $('body').html() || html;
+
+        const markdown = this.turndownService.turndown(contentHtml);
+
+        return {
+            response: markdown,
+            elapsed_time_ms: Date.now() - startTime,
+        };
     } catch (error) {
       const msg = err2String(error);
       logError(`Error processing URL ${url}: ${msg}`);
@@ -54,8 +82,9 @@ export class Mention {
 
   async processYoutubeUrl(url: string): Promise<{ transcript: string; error?: string }> {
     try {
-      const response = await this.brevilabsClient.youtube4llm(url);
-      return { transcript: response.response.transcript };
+      const transcriptItems = await YoutubeTranscript.fetchTranscript(url);
+      const transcript = transcriptItems.map(item => item.text).join(' ');
+      return { transcript: transcript };
     } catch (error) {
       const msg = err2String(error);
       logError(`Error processing YouTube URL ${url}: ${msg}`);

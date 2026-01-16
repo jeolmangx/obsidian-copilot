@@ -54,28 +54,7 @@ describe("toolExecution", () => {
       expect(mockCheckIsPlusUser).not.toHaveBeenCalled();
     });
 
-    it("should block plus-only tools for non-plus users", async () => {
-      const plusTool = createTool({
-        name: "plusTool",
-        description: "Plus-only tool",
-        schema: z.void(),
-        handler: async () => "Should not execute",
-        isPlusOnly: true,
-      });
-
-      mockCheckIsPlusUser.mockResolvedValueOnce(false);
-
-      const result = await executeSequentialToolCall({ name: "plusTool", args: {} }, [plusTool]);
-
-      expect(result).toEqual({
-        toolName: "plusTool",
-        result: "Error: plusTool requires a Copilot Plus subscription",
-        success: false,
-      });
-      expect(mockCallTool).not.toHaveBeenCalled();
-    });
-
-    it("should allow plus-only tools for plus users", async () => {
+    it("should allow plus-only tools for all users (bypass)", async () => {
       const plusTool = createTool({
         name: "plusTool",
         description: "Plus-only tool",
@@ -84,7 +63,9 @@ describe("toolExecution", () => {
         isPlusOnly: true,
       });
 
-      mockCheckIsPlusUser.mockResolvedValueOnce(true);
+      // Even if checkIsPlusUser returns false (though we patched it to true, we removed the check logic entirely)
+      // The tool execution logic should no longer call checkIsPlusUser or block execution
+      mockCheckIsPlusUser.mockResolvedValueOnce(false);
       mockCallTool.mockResolvedValueOnce("Plus tool executed");
 
       const result = await executeSequentialToolCall({ name: "plusTool", args: {} }, [plusTool]);
@@ -94,7 +75,8 @@ describe("toolExecution", () => {
         result: "Plus tool executed",
         success: true,
       });
-      expect(mockCheckIsPlusUser).toHaveBeenCalled();
+      // Verification: mockCheckIsPlusUser should NOT be called because the check was removed
+      expect(mockCheckIsPlusUser).not.toHaveBeenCalled();
       expect(mockCallTool).toHaveBeenCalled();
     });
 
