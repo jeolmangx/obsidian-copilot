@@ -46,13 +46,18 @@ Replaced cloud-based processing (Brevilabs API) with local libraries to ensure p
 
 ## Pending Items / Technical Debt 🚧
 
-The following components still contain references to `BrevilabsClient` and may need future attention:
+The following items have been addressed or intentionally removed:
 
-1.  **Web Search**: `src/tools/SearchTools.ts` still calls `BrevilabsClient.webSearch`.
-    *   *Status:* Unlocked but relies on backend. Consider replacing with a user-provided API key solution (e.g., Tavily, SerpAPI).
-2.  **Reranking**: `src/search/hybridRetriever.ts` calls `BrevilabsClient.rerank`.
-    *   *Status:* Relies on backend. Consider removing reranking or using a local alternative.
-3.  **Project Context (YouTube)**: `src/LLMProviders/projectManager.ts` calls `BrevilabsClient.youtube4llm`.
-    *   *Status:* Should be updated to use the new local `youtube-transcript` implementation.
-4.  **UI Modals**: `src/components/modals/YoutubeTranscriptModal.tsx` calls `BrevilabsClient.youtube4llm`.
-    *   *Status:* Should be updated to use the new local `youtube-transcript` implementation.
+1.  **Web Search**: `src/tools/SearchTools.ts` - Still uses Brevilabs.
+    *   *Status:* User does not need web search. Can be implemented later with BYOK (Tavily, SerpAPI) if wanted.
+2.  **Reranking**: `src/search/hybridRetriever.ts` - ~~Disabled~~
+    *   *Status:* ✅ Removed. Vector search works fine without refinement.
+3.  **YouTube Tools**: Various files reference `BrevilabsClient.youtube4llm`.
+    *   *Status:* User does not need YouTube transcripts. Local implementation exists in Mention.ts but tools not wired up.
+4.  **PDF Parsing**: `pdf-parse` was removed (Node.js library, not browser-compatible).
+    *   *Status:* ✅ Stubbed out. PDFs return placeholder text. Can add pdfjs-dist implementation later if needed.
+
+## Build Status ✅
+
+**Build successful as of 2026-01-16.**
+

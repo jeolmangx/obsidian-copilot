@@ -6,7 +6,7 @@ import { logError, logInfo } from "@/logger";
 import { extractRetryTime, isRateLimitError } from "@/utils/rateLimitUtils";
 import { Notice, TFile, Vault } from "obsidian";
 import { CanvasLoader } from "./CanvasLoader";
-import pdfParse from "pdf-parse";
+// pdf-parse removed - not browser compatible
 import mammoth from "mammoth";
 
 interface FileParser {
@@ -41,16 +41,10 @@ export class PDFParser implements FileParser {
         return cachedResponse.response;
       }
 
-      // If not in cache, read the file and parse locally
-      const binaryContent = await vault.readBinary(file);
-      const buffer = Buffer.from(binaryContent);
-
-      const data = await pdfParse(buffer);
-      const text = data.text;
-
-      const response = { response: text };
-      await this.pdfCache.set(file, response);
-      return text;
+      // Local PDF parsing not available - return placeholder
+      // PDFs will be handled by Docs4LLMParser in project mode
+      logInfo("Local PDF parsing not available for:", file.path);
+      return `[PDF: ${file.basename}] - PDF text extraction requires project mode or manual indexing.`;
     } catch (error) {
       logError(`Error extracting content from PDF ${file.path}:`, error);
       return `[Error: Could not extract content from PDF ${file.basename}]`;

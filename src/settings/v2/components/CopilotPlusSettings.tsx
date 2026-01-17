@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui/badge";
+// Badge import removed - no longer used
 import { SettingItem } from "@/components/ui/setting-item";
 import { updateSetting, useSettingsValue } from "@/settings/model";
 import React from "react";
@@ -10,11 +10,7 @@ export const CopilotPlusSettings: React.FC = () => {
   return (
     <div className="tw-flex tw-flex-col tw-gap-4">
       <section className="tw-flex tw-flex-col tw-gap-4">
-        <div className="tw-flex tw-items-center tw-py-4">
-          <Badge variant="secondary" className="tw-text-accent">
-            Plus Required
-          </Badge>
-        </div>
+        {/* Plus badge removed - all features unlocked */}
         <div className="tw-flex tw-flex-col tw-gap-4">
           <div className="tw-pt-4 tw-text-xl tw-font-semibold">Autonomous Agent</div>
 
